@@ -24,6 +24,8 @@ options(knitr.table.format = "html")
 Our goal in the course "Data Science Capstone" is analyzing a corpus of text documents to discover the structure in the data, then building and sampling from a predictive text model.  
 The training dataset is available for downloading from the [Coursera site](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip).
 
+.rmd file for this report id [here](https://github.com/Pisarev-I/DS-Capstone/blob/master/Milestone.Rmd).
+
 ## Exploratory analysis of the training data set
 
 The data is from a corpus called HC Corpora and consist of the files named LOCALE.TYPE.txt where LOCALE is the each of the four locales en_US, de_DE, ru_RU and fi_FI, and TYPE is blogs, news and twitter.  
