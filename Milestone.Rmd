@@ -1,0 +1,300 @@
+---
+title: "Milestone Report"
+author: "Pisarev I.K."
+output: 
+  html_document:
+    toc: yes
+    toc_float: yes
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+library(tm)
+library(SnowballC)
+library(stringr)
+library(kableExtra)
+library(ggplot2)
+library(wordcloud)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, comment = "")
+options(knitr.table.format = "html") 
+```
+
+## Introduction
+
+Our goal in the course "Data Science Capstone" is analyzing a corpus of text documents to discover the structure in the data, then building and sampling from a predictive text model.  
+The training dataset is available for downloading from the [Coursera site](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip).
+
+## Exploratory analysis of the training data set
+
+The data is from a corpus called HC Corpora and consist of the files named LOCALE.TYPE.txt where LOCALE is the each of the four locales en_US, de_DE, ru_RU and fi_FI, and TYPE is blogs, news and twitter.  
+So, for **English** language there is three files:  
+  1) en_US.blogs.txt  
+  2) en_US.news.txt  
+  3) en_US.twitter.txt  
+After loading each files, we can see these information about their structure:  
+
+```{r read, cache = TRUE}
+  setwd("/run/media/galen/WIN_D/Galen/Study/Coursera/10_Capstone/Dataset/final")
+  dfBaseSummary <- data.frame(Base = factor(levels = c(0,1,2),
+                                          labels = c("Blogs", "News", "Twitter")),
+                            Lines = integer(),
+                            Mean_Words_In_Line = numeric(),
+                            Total_Words_Before_Prepare = integer())
+
+  con <- file("./en_US/en_US.blogs.txt", "r")
+  vcBlogs <- readLines(con,-1,encoding = "UTF-8", skipNul = TRUE)
+  close(con)
+  
+  dfBaseSummary[1,]$Base <- "Blogs"
+  dfBaseSummary[1,]$Lines <- length(vcBlogs)
+  dfBaseSummary[1,]$Mean_Words_In_Line <- mean(sapply(vcBlogs, str_count, "\\S+"))
+  dfBaseSummary[1,]$Total_Words_Before_Prepare <- sum(sapply(vcBlogs, str_count, "\\S+"))
+  
+  con <- file("./en_US/en_US.news.txt", "r")
+  vcNews <- readLines(con,-1,encoding = "UTF-8", skipNul = TRUE)
+  close(con)
+
+  dfBaseSummary[2,]$Base <- "News"
+  dfBaseSummary[2,]$Lines <- length(vcNews)
+  dfBaseSummary[2,]$Mean_Words_In_Line <- mean(sapply(vcNews, str_count, "\\S+"))
+  dfBaseSummary[2,]$Total_Words_Before_Prepare <- sum(sapply(vcNews, str_count, "\\S+"))
+  
+  con <- file("./en_US/en_US.twitter.txt", "r")
+  vcTwitter <- readLines(con,-1,encoding = "UTF-8", skipNul = TRUE)
+  close(con)
+
+  dfBaseSummary[3,]$Base <- "Twitter"
+  dfBaseSummary[3,]$Lines <- length(vcTwitter)
+  dfBaseSummary[3,]$Mean_Words_In_Line <- mean(sapply(vcTwitter, str_count, "\\S+"))
+  dfBaseSummary[3,]$Total_Words_Before_Prepare <- sum(sapply(vcTwitter, str_count, "\\S+"))
+```
+
+```{r show, echo = FALSE, include = TRUE}
+  kable(dfBaseSummary,
+        col.names = c("Base", "Lines count", "Words in line", "Total words count")) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive", "bordered"), 
+          full_width = FALSE)
+```
+
+Now let's check, that there is the **same unique words ratio** in each of three base. We calculate total words count and unique words count in first about 125000 words in each files, after preparation:  
+  1) remove whitespaces  
+  2) convert to lower case  
+  3) remove numbers  
+  4) remove punctuation  
+  5) remove profanity  
+  6) remove stop-words  
+  7) stem words using Porter's stemming algorithm  
+  
+So we can see in the graph, that unique words count is equal to **about 12500 words**, and stop-words count is equal to about 55000 words **for first 125000 words in each three files**.  
+
+``` {r unique_calculate, cache = TRUE}
+urlBadWords <- "https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en"
+vcBadWords <- readLines(urlBadWords)
+
+dfWordsStats <- data.frame(NumberOfDocuments = integer(),
+                           Words = integer(),
+                           Type = factor(levels = c(0,1,2),
+                                         labels = c("Words", "Stop Words", "Unique Words")),
+                           Base = factor(levels = c(0,1,2),
+                                         labels = c("Blogs", "News", "Twitter")))
+
+  for (i in c(1:25)) {
+    crBlogs <- VCorpus(VectorSource(vcBlogs[1:(120*i)]))
+    dfWordsStats[((i-1)*3 + 1):((i-1)*3 + 3),]$NumberOfDocuments <- 120*i
+    dfWordsStats[((i-1)*3 + 1):((i-1)*3 + 3),]$Base <- "Blogs"
+    crBlogs <- tm_map(crBlogs, stripWhitespace)
+    crBlogs <- tm_map(crBlogs, content_transformer(tolower))
+    crBlogs <- tm_map(crBlogs, removeWords, vcBadWords)
+    crBlogs <- tm_map(crBlogs, removeNumbers)
+    crBlogs <- tm_map(crBlogs, removePunctuation)
+    crBlogs <- tm_map(crBlogs, removeWords, vcBadWords)
+    crBlogs <- tm_map(crBlogs, stemDocument)
+    dfWordsStats[((i-1)*3 + 1),]$Words <- sum(sapply(crBlogs, str_count, "\\S+"))
+    dfWordsStats[((i-1)*3 + 1),]$Type <- "Words"
+    dfWordsStats[((i-1)*3 + 2),]$Words <- DocumentTermMatrix(crBlogs)$ncol
+    dfWordsStats[((i-1)*3 + 2),]$Type <- "Unique Words"
+    crBlogs <- tm_map(crBlogs, removeWords, stopwords("en"))
+    dfWordsStats[((i-1)*3 + 3),]$Words <- dfWordsStats[((i-1)*3 + 1),]$Words - sum(sapply(crBlogs, str_count, "\\S+"))
+    dfWordsStats[((i-1)*3 + 3),]$Type <- "Stop Words"
+  }
+
+for (i in c(1:25)) {
+  crNews <- VCorpus(VectorSource(vcNews[1:(148*i)]))
+  dfWordsStats[((i-1)*3 + 76):((i-1)*3 + 78),]$NumberOfDocuments <- 148*i
+  dfWordsStats[((i-1)*3 + 76):((i-1)*3 + 78),]$Base <- "News"
+  crNews <- tm_map(crNews, stripWhitespace)
+  crNews <- tm_map(crNews, content_transformer(tolower))
+  crNews <- tm_map(crNews, removeWords, vcBadWords)
+  crNews <- tm_map(crNews, removeNumbers)
+  crNews <- tm_map(crNews, removePunctuation)
+  crNews <- tm_map(crNews, removeWords, vcBadWords)
+  crNews <- tm_map(crNews, stemDocument)
+  dfWordsStats[((i-1)*3 + 76),]$Words <- sum(sapply(crNews, str_count, "\\S+"))
+  dfWordsStats[((i-1)*3 + 76),]$Type <- "Words"
+  dfWordsStats[((i-1)*3 + 77),]$Words <- DocumentTermMatrix(crNews)$ncol
+  dfWordsStats[((i-1)*3 + 77),]$Type <- "Unique Words"
+  crNews <- tm_map(crNews, removeWords, stopwords("en"))
+  dfWordsStats[((i-1)*3 + 78),]$Words <- dfWordsStats[((i-1)*3 + 76),]$Words - sum(sapply(crNews, str_count, "\\S+"))
+  dfWordsStats[((i-1)*3 + 78),]$Type <- "Stop Words"
+}
+
+for (i in c(1:25)) {
+  crTwitter <- VCorpus(VectorSource(vcTwitter[1:(400*i)]))
+  dfWordsStats[((i-1)*3 + 151):((i-1)*3 + 153),]$NumberOfDocuments <- 400*i
+  dfWordsStats[((i-1)*3 + 151):((i-1)*3 + 153),]$Base <- "Twitter"
+  crTwitter <- tm_map(crTwitter, stripWhitespace)
+  crTwitter <- tm_map(crTwitter, content_transformer(tolower))
+  crTwitter <- tm_map(crTwitter, removeWords, vcBadWords)
+  crTwitter <- tm_map(crTwitter, removeNumbers)
+  crTwitter <- tm_map(crTwitter, removePunctuation)
+  crTwitter <- tm_map(crTwitter, removeWords, vcBadWords)
+  crTwitter <- tm_map(crTwitter, stemDocument)
+  dfWordsStats[((i-1)*3 + 151),]$Words <- sum(sapply(crTwitter, str_count, "\\S+"))
+  dfWordsStats[((i-1)*3 + 151),]$Type <- "Words"
+  dfWordsStats[((i-1)*3 + 152),]$Words <- DocumentTermMatrix(crTwitter)$ncol
+  dfWordsStats[((i-1)*3 + 152),]$Type <- "Unique Words"
+  crTwitter <- tm_map(crTwitter, removeWords, stopwords("en"))
+  dfWordsStats[((i-1)*3 + 153),]$Words <- dfWordsStats[((i-1)*3 + 151),]$Words - sum(sapply(crTwitter, str_count, "\\S+"))
+  dfWordsStats[((i-1)*3 + 153),]$Type <- "Stop Words"
+}
+```
+
+```{r show_unique, echo = FALSE, include = TRUE}
+ggplot(dfWordsStats[order(dfWordsStats$NumberOfDocuments),],
+       aes(x = as.numeric(NumberOfDocuments),
+           y = as.numeric(Words),
+           color = Type, group = Type))+
+  geom_line(size = 1.5)+
+  geom_hline(yintercept = 120000, linetype = "dotted")+
+  geom_hline(yintercept = 50000, linetype = "dotted")+
+  geom_hline(yintercept = 12500, linetype = "dotted")+
+  facet_wrap(~Base,scales = "free_x")+
+  scale_y_continuous(breaks = c(1:25)*5000)+
+  xlab("Number of lines")+
+  ylab("Words")+
+  ggtitle("Increasing count of all words and unique words with new lines of the base")+
+  theme_bw()
+```
+
+
+Let's see distribution of frequency of most frequently words in all bases.  
+
+
+```{r most_freq_calculate, cache = TRUE}
+  dtmBlogs <- DocumentTermMatrix(crBlogs)
+  vcBlogsFreq <- sort(colSums(as.matrix(dtmBlogs)), decreasing=TRUE)
+  dfBlogsFreq   <- data.frame(word=names(vcBlogsFreq), freq=vcBlogsFreq)
+  
+  dfBlogsFreqOrder <- data.frame(freq = head(dfBlogsFreq[order(dfBlogsFreq$freq,
+                                                             decreasing = TRUE),2],200),
+                                     order = 1:200)
+  
+  dtmNews <- DocumentTermMatrix(crNews)
+  vcNewsFreq <- sort(colSums(as.matrix(dtmNews)), decreasing=TRUE)
+  dfNewsFreq   <- data.frame(word=names(vcNewsFreq), freq=vcNewsFreq)
+  
+  dfNewsFreqOrder <- data.frame(freq = head(dfNewsFreq[order(dfNewsFreq$freq,
+                                                             decreasing = TRUE),2],200),
+                                     order = 1:200)
+  
+  dtmTwitter <- DocumentTermMatrix(crTwitter)
+  vcTwitterFreq <- sort(colSums(as.matrix(dtmTwitter)), decreasing=TRUE)
+  dfTwitterFreq   <- data.frame(word=names(vcTwitterFreq), freq=vcTwitterFreq)
+  
+  dfTwitterFreqOrder <- data.frame(freq = head(dfTwitterFreq[order(dfTwitterFreq$freq,
+                                                             decreasing = TRUE),2],200),
+                                     order = 1:200)
+  
+  dfWordsFreq <- data.frame(freq = integer(),
+                          order = integer(),
+                          Base = factor(levels = c(0,1,2),
+                                        labels = c("Blogs", "News", "Twitter")))
+  dfWordsFreq <- rbind(dfWordsFreq,cbind(dfBlogsFreqOrder,Base = "Blogs"))
+  dfWordsFreq <- rbind(dfWordsFreq,cbind(dfNewsFreqOrder,Base = "News"))
+  dfWordsFreq <- rbind(dfWordsFreq,cbind(dfTwitterFreqOrder,Base = "Twitter"))
+```
+
+### Most frequently words in Blogs data set
+
+Wordcloud of 100 most frequently words:  
+
+```{r most_freq_show_Blogs_1}
+  wordcloud(crBlogs, random.order=F, max.words=100,
+          colors=brewer.pal(6, "Dark2"))
+```
+
+50 most frequently words with frequency:  
+
+```{r most_freq_show_Blogs_2}
+  ggplot(head(dfBlogsFreq[order(dfBlogsFreq$freq,decreasing = TRUE),],50),
+        aes(x = reorder(word, -freq), y = freq))+
+    geom_bar(stat="identity")+
+    xlab("Words")+
+    ylab("Frequency")+
+    ggtitle("50 most frequently words in Blogs")+
+    theme_bw()+
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+  
+### Most frequently words in News data set 
+
+Wordcloud of 100 most frequently words: 
+
+```{r most_freq_show_News_1}
+  wordcloud(crNews, random.order=F, max.words=100,
+          colors=brewer.pal(6, "Dark2"))
+```
+
+50 most frequently words with frequency:  
+
+```{r most_freq_show_News_2}
+  ggplot(head(dfNewsFreq[order(dfNewsFreq$freq,decreasing = TRUE),],50),
+        aes(x = reorder(word, -freq), y = freq))+
+    geom_bar(stat="identity")+
+    xlab("Words")+
+    ylab("Frequency")+
+    ggtitle("50 most frequently words in News")+
+    theme_bw()+
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+### Most frequently words in Twitter data set  
+
+Wordcloud of 100 most frequently words: 
+
+```{r most_freq_show_Twitter_1}
+  wordcloud(crTwitter, random.order=F, max.words=100,
+          colors=brewer.pal(6, "Dark2"))
+```
+
+50 most frequently words with frequency:  
+
+```{r most_freq_show_Twitter_2}
+  ggplot(head(dfTwitterFreq[order(dfTwitterFreq$freq,decreasing = TRUE),],50),
+        aes(x = reorder(word, -freq), y = freq))+
+    geom_bar(stat="identity")+
+    xlab("Words")+
+    ylab("Frequency")+
+    ggtitle("50 most frequently words in Twitter")+
+    theme_bw()+
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+```  
+
+We can see, that in Blogs and Twitter datasets the distribution is more smooth.  
+We can check this in the graph of distribution of frequency 200 most frequently words in all datasets:  
+
+```{r most_freq_show_All_1}
+  ggplot(dfWordsFreq, aes(x = order,y = freq, color = Base))+
+    geom_line(size = 1.5)+
+    scale_y_continuous(breaks = c(1:20)*50)+
+    xlab("Words")+
+    ylab("Frequency")+
+    ggtitle("Frequency of 200 most frequently words in all Bases")+
+    theme_bw()
+```
+
+## Resume
+
+There is no difference in unique words ratio in 3 training data sets. But distribution of frequency of most frequently words in data sets "Blogs" and "Twitter" is more smooth, than in data set "News".
+
+To get an idea of the training datasets content, we removed stop-words and punctuation. But for prediction it is destructive, and can to worsen the model, we will not remove stop-words and punctuation in preparing for create the prediction model.
